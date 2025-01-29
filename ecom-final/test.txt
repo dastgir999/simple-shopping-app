@@ -1,0 +1,430 @@
+Below is the complete code for the PHP, MySQL, and AJAX-based shopping cart application with features like adding products to the cart, updating cart quantities, and checkout with Cash on Delivery (COD). This includes all the necessary files and steps to set up the application.
+
+---
+
+### **1. Database Setup**
+Run the following SQL queries to create the database and tables:
+
+```sql
+CREATE DATABASE shopping_cart;
+USE shopping_cart;
+
+-- Products table
+CREATE TABLE products (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    description TEXT,
+    image VARCHAR(255)
+);
+
+-- Orders table
+CREATE TABLE orders (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_email VARCHAR(255) NOT NULL,
+    customer_address TEXT NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    status ENUM('pending', 'completed') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Order items table
+CREATE TABLE order_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- Insert sample products
+INSERT INTO products (name, price, description, image) VALUES
+('Product 1', 10.00, 'Description for Product 1', 'product1.jpg'),
+('Product 2', 20.00, 'Description for Product 2', 'product2.jpg'),
+('Product 3', 30.00, 'Description for Product 3', 'product3.jpg');
+```
+
+---
+
+### **2. File Structure**
+Create the following files in your project directory:
+
+```
+shopping_cart/
+│
+├── index.php           (Product listing and add to cart)
+├── add_to_cart.php     (Add product to cart)
+├── get_cart_count.php  (Get cart item count)
+├── view_cart.php       (View and update cart)
+├── update_cart.php     (Update cart quantities)
+├── checkout.php        (Checkout page)
+├── place_order.php     (Place order)
+└── db.php              (Database connection)
+```
+
+---
+
+### **3. Complete Code**
+
+#### **db.php** (Database Connection)
+```php
+<?php
+$conn = new mysqli('localhost', 'root', '', 'shopping_cart');
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+?>
+```
+
+---
+
+#### **index.php** (Product Listing)
+```php
+<?php
+session_start();
+include 'db.php';
+
+// Fetch products
+$sql = "SELECT * FROM products";
+$result = $conn->query($sql);
+$products = [];
+if ($result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $products[] = $row;
+    }
+}
+$conn->close();
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Cart</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Products</h1>
+    <div id="cart-message"></div>
+    <p>Cart Items: <span id="cart-count"><?php echo isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0; ?></span></p>
+    <a href="view_cart.php">View Cart</a>
+
+    <ul>
+        <?php foreach ($products as $product): ?>
+            <li>
+                <h3><?php echo $product['name']; ?></h3>
+                <p><?php echo $product['description']; ?></p>
+                <p>Price: $<?php echo $product['price']; ?></p>
+                <button onclick="addToCart(<?php echo $product['id']; ?>)">Add to Cart</button>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+
+    <a href="checkout.php">Proceed to Checkout</a>
+
+    <script>
+        function addToCart(productId) {
+            $.ajax({
+                url: 'add_to_cart.php',
+                type: 'POST',
+                data: { product_id: productId },
+                success: function(response) {
+                    $('#cart-message').html(response);
+                    // Update cart count
+                    $.ajax({
+                        url: 'get_cart_count.php',
+                        type: 'GET',
+                        success: function(count) {
+                            $('#cart-count').text(count);
+                        }
+                    });
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
+#### **add_to_cart.php** (Add Product to Cart)
+```php
+<?php
+session_start();
+
+if (!isset($_SESSION['cart'])) {
+    $_SESSION['cart'] = [];
+}
+
+$product_id = $_POST['product_id'];
+if (isset($_SESSION['cart'][$product_id])) {
+    $_SESSION['cart'][$product_id] += 1; // Increase quantity
+} else {
+    $_SESSION['cart'][$product_id] = 1; // Add new product
+}
+
+echo "Product added to cart!";
+?>
+```
+
+---
+
+#### **get_cart_count.php** (Get Cart Item Count)
+```php
+<?php
+session_start();
+echo isset($_SESSION['cart']) ? array_sum($_SESSION['cart']) : 0;
+?>
+```
+
+---
+
+#### **view_cart.php** (View and Update Cart)
+```php
+<?php
+session_start();
+include 'db.php';
+
+if (empty($_SESSION['cart'])) {
+    die("Your cart is empty.");
+}
+
+// Fetch cart products
+$cart_products = [];
+$total_amount = 0;
+foreach ($_SESSION['cart'] as $product_id => $quantity) {
+    $sql = "SELECT * FROM products WHERE id = $product_id";
+    $result = $conn->query($sql);
+    if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $row['quantity'] = $quantity; // Add quantity to product data
+        $cart_products[] = $row;
+        $total_amount += $row['price'] * $quantity; // Calculate total amount
+    }
+}
+$conn->close();
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Cart</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Your Cart</h1>
+    <form id="cart-form" action="update_cart.php" method="POST">
+        <table border="1">
+            <tr>
+                <th>Product</th>
+                <th>Price</th>
+                <th>Quantity</th>
+                <th>Total</th>
+            </tr>
+            <?php foreach ($cart_products as $product): ?>
+                <tr>
+                    <td><?php echo $product['name']; ?></td>
+                    <td>$<?php echo $product['price']; ?></td>
+                    <td>
+                        <input type="number" name="quantity[<?php echo $product['id']; ?>]" value="<?php echo $product['quantity']; ?>" min="1">
+                    </td>
+                    <td>$<?php echo $product['price'] * $product['quantity']; ?></td>
+                </tr>
+            <?php endforeach; ?>
+        </table>
+        <br>
+        <button type="submit">Update Cart</button>
+    </form>
+    <br>
+    <a href="checkout.php">Proceed to Checkout</a>
+    <br>
+    <a href="index.php">Continue Shopping</a>
+
+    <script>
+        // Update cart form submission
+        $('#cart-form').on('submit', function(e) {
+            e.preventDefault();
+            $.ajax({
+                url: 'update_cart.php',
+                type: 'POST',
+                data: $(this).serialize(),
+                success: function(response) {
+                    alert('Cart updated successfully!');
+                    location.reload(); // Refresh the page
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+```
+
+---
+
+#### **update_cart.php** (Update Cart Quantities)
+```php
+<?php
+session_start();
+
+if (!isset($_SESSION['cart'])) {
+    die("Your cart is empty.");
+}
+
+foreach ($_POST['quantity'] as $product_id => $quantity) {
+    if ($quantity > 0) {
+        $_SESSION['cart'][$product_id] = $quantity; // Update quantity
+    } else {
+        unset($_SESSION['cart'][$product_id]); // Remove product if quantity is 0
+    }
+}
+
+echo "Cart updated successfully!";
+?>
+```
+
+---
+
+#### **checkout.php** (Checkout Page)
+```php
+<?php
+session_start();
+include 'db.php';
+
+if (empty($_SESSION['cart'])) {
+    die("Your cart is empty.");
+}
+
+// Fetch cart products
+$cart_products = [];
+$total_amount = 0;
+foreach ($_SESSION['cart'] as $product_id => $quantity) {
+    $sql = "SELECT * FROM products WHERE id = $product_id";
+    $result = $conn->query($sql);
+    if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $row['quantity'] = $quantity; // Add quantity to product data
+        $cart_products[] = $row;
+        $total_amount += $row['price'] * $quantity; // Calculate total amount
+    }
+}
+$conn->close();
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout</title>
+</head>
+<body>
+    <h1>Checkout</h1>
+    <h2>Your Cart</h2>
+    <ul>
+        <?php foreach ($cart_products as $product): ?>
+            <li>
+                <h3><?php echo $product['name']; ?></h3>
+                <p>Price: $<?php echo $product['price']; ?></p>
+                <p>Quantity: <?php echo $product['quantity']; ?></p>
+                <p>Total: $<?php echo $product['price'] * $product['quantity']; ?></p>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+
+    <h2>Total Amount: $<?php echo $total_amount; ?></h2>
+
+    <h2>Customer Details</h2>
+    <form action="place_order.php" method="POST">
+        <label for="name">Name:</label>
+        <input type="text" name="name" required><br><br>
+        <label for="email">Email:</label>
+        <input type="email" name="email" required><br><br>
+        <label for="address">Address:</label>
+        <textarea name="address" required></textarea><br><br>
+        <input type="submit" value="Place Order (COD)">
+    </form>
+</body>
+</html>
+```
+
+---
+
+#### **place_order.php** (Place Order)
+```php
+<?php
+session_start();
+include 'db.php';
+
+if (empty($_SESSION['cart'])) {
+    die("Your cart is empty.");
+}
+
+// Calculate total amount
+$total_amount = 0;
+foreach ($_SESSION['cart'] as $product_id => $quantity) {
+    $sql = "SELECT price FROM products WHERE id = $product_id";
+    $result = $conn->query($sql);
+    if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        $total_amount += $row['price'] * $quantity;
+    }
+}
+
+// Insert order
+$name = $_POST['name'];
+$email = $_POST['email'];
+$address = $_POST['address'];
+
+$sql = "INSERT INTO orders (customer_name, customer_email, customer_address, total_amount) 
+        VALUES ('$name', '$email', '$address', $total_amount)";
+if ($conn->query($sql) === TRUE) {
+    $order_id = $conn->insert_id;
+
+    // Insert order items
+    foreach ($_SESSION['cart'] as $product_id => $quantity) {
+        $sql = "SELECT price FROM products WHERE id = $product_id";
+        $result = $conn->query($sql);
+        if ($result->num_rows > 0) {
+            $row = $result->fetch_assoc();
+            $price = $row['price'];
+            $sql = "INSERT INTO order_items (order_id, product_id, quantity, price) 
+                    VALUES ($order_id, $product_id, $quantity, $price)";
+            $conn->query($sql);
+        }
+    }
+
+    // Clear cart
+    unset($_SESSION['cart']);
+
+    echo "Order placed successfully!";
+} else {
+    echo "Error: " . $sql . "<br>" . $conn->error;
+}
+
+$conn->close();
+?>
+```
+
+---
+
+### **How to Run**
+1. Set up the database using the SQL queries provided.
+2. Place all the PHP files in your web server directory (e.g., `htdocs` for XAMPP).
+3. Access the application via `http://localhost/shopping_cart/index.php`.
+
+---
+
+### **Features**
+- Add products to the cart.
+- View and update cart quantities.
+- Checkout with Cash on Delivery (COD).
+- Display the number of items in the cart.
+
+This is a complete shopping cart application. You can expand it further by adding features like user authentication, payment gateways, and an admin panel.
