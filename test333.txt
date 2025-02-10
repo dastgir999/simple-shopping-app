@@ -1,0 +1,10 @@
+Features
+Add products to the cart.
+
+View and update cart quantities.
+
+Checkout with Cash on Delivery (COD).
+
+Display the number of items in the cart.
+
+This is a complete shopping cart application.
